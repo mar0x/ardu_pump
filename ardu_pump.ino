@@ -44,6 +44,19 @@ ISR(TIMER1_COMPA_vect)
 }
 #endif
 
+#if defined(HAVE_HWSERIAL)
+template<typename T1> void debug(const T1& a1) {
+    Serial.println(a1);
+}
+
+template<typename T1, typename ...Args> void debug(const T1& a1, Args... args) {
+    Serial.print(a1);
+    debug__(args...);
+}
+#else
+#define debug(...)
+#endif
+
 void setup() {
 #if defined(HAVE_HWSERIAL)
     Serial.begin(115200);
@@ -57,11 +70,16 @@ void setup() {
     echo_int().disable();
 
 #if defined(ARDUINO_ARCH_AVR)
-    input_tc().setup(0, 0, 4, input_tc::cs::presc_256);
+    input_tc().setup(0, 0, 4, input_tc::cs::presc_1024);
     input_tc().ocra() = 200;
     input_tc().cnt() = 0;
     input_tc().oca().enable();
 #endif
+
+    // disable ADC
+    ADCSRA = 0;
+
+    PRR = (1 << PRUSI) | (1 << PRADC);
 
     artl::yield();
 }
@@ -82,9 +100,7 @@ void pump_on() {
     pump_enabled = true;
     pump().high();
 
-#if defined(HAVE_HWSERIAL)
-    Serial.println("pump ON");
-#endif
+    debug("pump ON");
 }
 
 void pump_off() {
@@ -95,23 +111,18 @@ void pump_off() {
     pump_enabled = false;
     pump().low();
 
-#if defined(HAVE_HWSERIAL)
-    Serial.println("pump OFF");
-#endif
+    debug("pump OFF");
 }
 
 void set_distance(double d) {
-#if defined(HAVE_HWSERIAL)
-//    Serial.println(d);
-#endif
+//    debug("distance ", d);
 
     if (d > min_tap_distance) {
         pump_off();
         if (tap_approach) {
             tap_approach = false;
-#if defined(HAVE_HWSERIAL)
-            Serial.println("tap distancing ...");
-#endif
+            input_tc().setup(0, 0, 4, input_tc::cs::presc_1024);
+            debug("tap distancing ...");
         }
     } else {
         if (tap_approach) {
@@ -119,9 +130,8 @@ void set_distance(double d) {
                 pump_on();
             }
         } else {
-#if defined(HAVE_HWSERIAL)
-            Serial.println("tap approach ...");
-#endif
+            debug("tap approach ...");
+            input_tc().setup(0, 0, 4, input_tc::cs::presc_512);
             tap_approach = true;
             tap_approach_start = millis();
         }
@@ -163,16 +173,7 @@ void loop() {
 
 #if defined(DEBUG)
             if ((millis() - last_print) > 100) {
-#if defined(HAVE_HWSERIAL)
-/*
-                Serial.print("off: ");
-                Serial.print(echo_on_us);
-                Serial.print(" - ");
-                Serial.print(echo_off_us);
-                Serial.print(" = ");
-*/
-                Serial.println( last_distance );
-#endif
+                debug(last_distance);
                 last_print = millis();
             }
 #endif
